@@ -1,0 +1,9 @@
+Artificial intelligence is transforming industries worldwide.
+
+Machine learning models can now process language, images, and structured data.
+
+Retrieval-Augmented Generation (RAG) combines search with language generation.
+
+This allows AI systems to answer questions using specific documents.
+
+The result is more accurate and grounded responses from language models.
