@@ -1,0 +1,9 @@
+NexusChat Pricing
+
+Starter plan: 50 USD per month, up to 10 users, 1GB document storage.
+
+Professional plan: 200 USD per month, up to 100 users, 10GB storage, priority support.
+
+Enterprise plan: Custom pricing, unlimited users, dedicated infrastructure.
+
+All plans include a 14-day free trial. No credit card required.
