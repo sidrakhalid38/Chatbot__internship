@@ -1,9 +1,5 @@
-Artificial intelligence is transforming industries worldwide.
+NexusChat is a document-based RAG chatbot. It can answer questions using uploaded documents.
 
-Machine learning models can now process language, images, and structured data.
+NexusChat supports TXT, PDF, and DOCX file formats.
 
-Retrieval-Augmented Generation (RAG) combines search with language generation.
-
-This allows AI systems to answer questions using specific documents.
-
-The result is more accurate and grounded responses from language models.
+It uses document loading, chunking, embeddings, vector search, and Gemini generation to give grounded answers.

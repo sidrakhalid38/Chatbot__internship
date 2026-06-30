@@ -1,3 +1,4 @@
+import os
 import fitz
 from docx import Document
 
@@ -26,6 +27,22 @@ def read_docx(file_path):
         text += paragraph.text + "\n"
 
     return text
+
+
+def load_document(file_path):
+    extension = os.path.splitext(file_path)[1].lower()
+
+    if extension == ".txt":
+        return read_txt(file_path)
+
+    elif extension == ".pdf":
+        return read_pdf(file_path)
+
+    elif extension == ".docx":
+        return read_docx(file_path)
+
+    else:
+        raise ValueError(f"Unsupported file type: {extension}")
 
 
 if __name__ == "__main__":

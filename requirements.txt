@@ -1,0 +1,7 @@
+google-generativeai
+langchain
+langchain-text-splitters
+chromadb
+python-dotenv
+pymupdf
+python-docx
