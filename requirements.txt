@@ -5,3 +5,4 @@ chromadb
 python-dotenv
 pymupdf
 python-docx
+rank-bm25
