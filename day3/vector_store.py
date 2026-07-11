@@ -37,8 +37,8 @@ def index_documents(collection, doc_paths):
     for doc_path in doc_paths:
         print(f"Indexing: {doc_path}")
         text = load_document(doc_path)
-        chunks = recursive_chunking(text, size=300, overlap=50)
-
+        #chunks = recursive_chunking(text, size=300, overlap=50)
+         chunks = recursive_chunking(text, size=300, overlap=40)
         for i, chunk in enumerate(chunks):
             chunk_id = f"{os.path.basename(doc_path)}_chunk_{i}"
             embedding = embed_text(chunk)

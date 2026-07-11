@@ -19,6 +19,11 @@ DOCUMENTS = [
 ]
 
 
+def is_complex_question(question):
+    complex_words = ["compare", "difference", "and", "both", "pricing", "policy"]
+    return any(word in question.lower() for word in complex_words)
+
+
 def run_advanced_chatbot():
     retriever = HybridRetriever()
     chat_history = []
@@ -48,14 +53,21 @@ def run_advanced_chatbot():
         if standalone_question != question:
             print(f'(search query: "{standalone_question}")')
 
-        result = decompose_and_answer(
-            standalone_question,
-            retriever,
-            rerank,
-            generate_answer
-        )
-
-        final_answer = result["final_answer"]
+        if is_complex_question(standalone_question):
+            result = decompose_and_answer(
+                standalone_question,
+                retriever,
+                rerank,
+                generate_answer
+            )
+            final_answer = result["final_answer"]
+        else:
+            chunks = retriever.search(
+                standalone_question,
+                top_k=2,
+                fetch_k=6
+            )
+            final_answer = generate_answer(standalone_question, chunks)
 
         print(f"\nNexusChat: {final_answer}")
 

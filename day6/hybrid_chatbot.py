@@ -1,16 +1,17 @@
 import os
 import sys
-import google.generativeai as genai
+
 from dotenv import load_dotenv
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from day5.memory_chatbot import rewrite_query, generate_with_memory
+from day5.memory_chatbot import rewrite_query
+from day4.generator import generate_answer
 from day6.hybrid_retriever import HybridRetriever
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
 
 DOCUMENTS = [
     "day2/sample.txt",
@@ -48,8 +49,7 @@ def run_hybrid_chatbot():
         if standalone != question:
             print(f'(search query: "{standalone}")')
 
-        chunks = retriever.search(standalone, top_k=3, fetch_k=10)
-
+        chunks = retriever.search(standalone, top_k=2, fetch_k=6)
         if not chunks:
             print("\nNexusChat: No relevant information found in documents.")
             chat_history.append({
@@ -60,8 +60,7 @@ def run_hybrid_chatbot():
 
         print("Retrieved from:", [c["source"] for c in chunks])
 
-        answer = generate_with_memory(question, chunks, chat_history)
-
+        answer = generate_answer(question, chunks)    
         print(f"\nNexusChat: {answer}")
 
         chat_history.append({

@@ -1,7 +1,6 @@
 import os
 import sys
 import chromadb
-import google.generativeai as genai
 
 from dotenv import load_dotenv
 
@@ -11,45 +10,28 @@ sys.path.insert(0, ROOT)
 from day2.ingestion import load_document
 from day2.chunking import recursive_chunking
 from day3.embeddings import embed_text, embed_query
-from day4.generator import build_prompt
+#from day4.generator import build_prompt
+from day4.generator import generate_answer
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-GENERATION_MODEL = "models/gemini-2.5-flash"
-
-CHUNK_SIZE = 400
-CHUNK_OVERLAP = 80
-TOP_K_RESULTS = 3
-HISTORY_TURNS = 3
+CHUNK_SIZE = 300
+CHUNK_OVERLAP = 40
+TOP_K_RESULTS = 2
+HISTORY_TURNS = 2
 COLLECTION_NAME = "nexuschat_day5"
-
 
 def rewrite_query(question, chat_history):
     if not chat_history:
         return question
 
-    history_lines = []
-    for turn in chat_history[-HISTORY_TURNS:]:
-        history_lines.append(f"User: {turn['question']}")
-        history_lines.append(f"Assistant: {turn['answer']}")
+    followup_words = ["it", "this", "that", "they", "its", "them"]
+    question_words = question.lower().split()
 
-    history_text = "\n".join(history_lines)
+    if any(word in question_words for word in followup_words):
+        return chat_history[-1]["question"] + " " + question
 
-    rewrite_prompt = f"""Given this conversation history:
-{history_text}
-
-Rewrite the following follow-up question as a standalone question.
-If the question is already standalone, return it unchanged.
-Output ONLY the rewritten question, nothing else.
-
-Follow-up question: {question}
-Standalone question:"""
-
-    model = genai.GenerativeModel(GENERATION_MODEL)
-    response = model.generate_content(rewrite_prompt)
-
-    return response.text.strip()
+    return question
 
 
 def generate_with_memory(question, retrieved_chunks, chat_history):
@@ -179,8 +161,7 @@ def run_chatbot_with_memory(doc_paths):
             chat_history.append({"question": question, "answer": answer})
             continue
 
-        answer = safe_generate_with_memory(question, chunks, chat_history)
-
+        answer = generate_answer(question, chunks)
         print(f"\nNexusChat: {answer}")
 
         chat_history.append({

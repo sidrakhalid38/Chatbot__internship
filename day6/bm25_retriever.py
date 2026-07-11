@@ -27,7 +27,7 @@ class BM25Retriever:
 
         print(f"BM25 index built over {len(chunks)} chunks.")
 
-    def search(self, query, top_k=3):
+    def search(self, query, top_k=2):
         if self.bm25 is None:
             raise RuntimeError("Call index() before search()")
 
@@ -54,8 +54,7 @@ def build_bm25_index(doc_paths):
 
     for path in doc_paths:
         text = load_document(path)
-        chunks = recursive_chunking(text, size=400, overlap=80)
-
+        chunks = recursive_chunking(text, size=300, overlap=40)
         for chunk in chunks:
             all_chunks.append(chunk)
             all_sources.append(os.path.basename(path))
@@ -87,8 +86,7 @@ if __name__ == "__main__":
         print(f"QUERY: {query}")
         print("=" * 65)
 
-        results = bm25.search(query, top_k=3)
-
+        results = bm25.search(query, top_k=2)
         for i, result in enumerate(results, start=1):
             print(f"\n[BM25 Result {i}]")
             print(f"Source: {result['source']}")

@@ -2,7 +2,6 @@ import os
 import sys
 import chromadb
 from dotenv import load_dotenv
-import google.generativeai as genai
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -13,7 +12,7 @@ from day3.embeddings import embed_text, embed_query
 from day4.generator import generate_answer, display_answer
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
 
 
 def load_document(path):
@@ -48,8 +47,8 @@ def build_index(doc_paths, collection_name="nexuschat"):
         print(f"Loading and chunking: {path}")
 
         text = load_document(path)
-        chunks = recursive_chunking(text, size=400, overlap=80)
-
+        #chunks = recursive_chunking(text, size=400, overlap=80)
+        chunks = recursive_chunking(text, size=300, overlap=40)
         for i, chunk in enumerate(chunks):
             chunk_id = f"{os.path.basename(path)}_c{i}"
             embedding = embed_text(chunk)
@@ -113,7 +112,8 @@ def run_chatbot(doc_paths):
             print("Goodbye!")
             break
 
-        chunks = retrieve(collection, question, top_k=3)
+       # chunks = retrieve(collection, question, top_k=3)
+        chunks = retrieve(collection, question, top_k=2)
         answer = generate_answer(question, chunks)
         display_answer(question, answer, chunks)
 

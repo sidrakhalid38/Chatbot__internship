@@ -1,7 +1,8 @@
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
-def fixed_size_chunking(text, size=200, overlap=50):
+#def fixed_size_chunking(text, size=200, overlap=50):
+def recursive_chunking(text, size=300, overlap=40):
     chunks = []
     step = size - overlap
 

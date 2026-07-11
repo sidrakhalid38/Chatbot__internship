@@ -1,38 +1,51 @@
-import os
 import math
-import google.generativeai as genai
-from dotenv import load_dotenv
+import re
+import hashlib
+
+EMBED_DIM = 384
 
 
-load_dotenv()
+def _tokenize(text):
+    text = text.lower()
+    return re.findall(r"\b[a-z0-9]+\b", text)
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-EMBED_MODEL = "models/gemini-embedding-001"
+def _hash_token(token):
+    h = hashlib.md5(token.encode("utf-8")).hexdigest()
+    return int(h, 16)
 
 
 def embed_text(text):
-    result = genai.embed_content(
-        model=EMBED_MODEL,
-        content=text,
-        task_type="RETRIEVAL_DOCUMENT",
-    )
-    return result["embedding"]
+    vector = [0.0] * EMBED_DIM
+    tokens = _tokenize(text)
+
+    if not tokens:
+        return vector
+
+    for token in tokens:
+        index = _hash_token(token) % EMBED_DIM
+        vector[index] += 1.0
+
+    norm = math.sqrt(sum(v * v for v in vector))
+
+    if norm == 0:
+        return vector
+
+    return [v / norm for v in vector]
 
 
 def embed_query(text):
-    result = genai.embed_content(
-        model=EMBED_MODEL,
-        content=text,
-        task_type="RETRIEVAL_QUERY",
-    )
-    return result["embedding"]
+    return embed_text(text)
 
 
 def cosine_similarity(v1, v2):
     dot = sum(a * b for a, b in zip(v1, v2))
     norm1 = math.sqrt(sum(a * a for a in v1))
     norm2 = math.sqrt(sum(b * b for b in v2))
+
+    if norm1 == 0 or norm2 == 0:
+        return 0.0
+
     return dot / (norm1 * norm2)
 
 

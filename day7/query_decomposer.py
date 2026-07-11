@@ -1,123 +1,44 @@
 import os
 import sys
-import google.generativeai as genai
-from dotenv import load_dotenv
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-load_dotenv()
-
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-
-
-GENERATION_MODEL = "models/gemini-2.5-flash"
 
 def decompose_question(question):
-    """
-    Breaks a complex question into simple sub-questions.
-    If the question is already simple, returns the same question.
-    """
+    complex_words = ["compare", "difference", "and", "both", "pricing", "policy"]
 
-    decompose_prompt = f"""
-You are a query analysis assistant.
+    if not any(word in question.lower() for word in complex_words):
+        return [question]
 
-Analyse the following question and break it into simple, atomic sub-questions.
+    parts = question.replace(" and ", "? ").split("?")
 
-Each sub-question should ask for exactly one piece of information.
+    sub_questions = [
+        p.strip() + "?"
+        for p in parts
+        if p.strip()
+    ]
 
-If the original question is already simple and atomic, return it as-is.
-
-Rules:
-- Output ONLY the sub-questions, one per line, numbered 1. 2. 3. etc.
-- Do not include any explanation.
-- Do not output more than 4 sub-questions.
-- Each sub-question must be self-contained and searchable on its own.
-
-Question: {question}
-
-Sub-questions:
-"""
-
-    model = genai.GenerativeModel(GENERATION_MODEL)
-    response = model.generate_content(decompose_prompt)
-
-    raw = response.text.strip()
-
-    sub_questions = []
-
-    for line in raw.split("\n"):
-        line = line.strip()
-
-        if not line:
-            continue
-
-        if len(line) > 2 and line[0].isdigit() and line[1] in [".", ")"]:
-            line = line[2:].strip()
-
-        sub_questions.append(line)
-
-    return sub_questions if sub_questions else [question]
+    return sub_questions[:3]
 
 
 def answer_sub_question(sub_question, retriever, rerank_fn, generate_fn):
-    """
-    Retrieves chunks for one sub-question, re-ranks them,
-    then generates an answer.
-    """
-
-    chunks = retriever.search(sub_question, top_k=5, fetch_k=10)
-
+    chunks = retriever.search(sub_question, top_k=3, fetch_k=6)
     reranked = rerank_fn(sub_question, chunks, top_k=2)
-
     answer = generate_fn(sub_question, reranked)
-
     return answer
 
 
 def synthesise_answers(original_question, sub_questions, sub_answers):
-    """
-    Combines all sub-question answers into one final answer.
-    """
-
-    qa_block = ""
+    final = []
 
     for sq, sa in zip(sub_questions, sub_answers):
-        qa_block += f"Sub-question: {sq}\n"
-        qa_block += f"Answer: {sa}\n\n"
+        final.append(f"Sub-question: {sq}\nAnswer: {sa}")
 
-    synthesis_prompt = f"""
-You have been given a complex question and a set of focused answers to its sub-questions.
-
-Synthesise all the sub-answers into one comprehensive, well-structured final answer.
-
-Use only the information in the sub-answers.
-Do not add external knowledge.
-Be concise and clear.
-
-Original question:
-{original_question}
-
-Sub-question answers:
-{qa_block}
-
-Comprehensive answer:
-"""
-
-    model = genai.GenerativeModel(GENERATION_MODEL)
-    response = model.generate_content(synthesis_prompt)
-
-    return response.text.strip()
+    return "\n\n".join(final)
 
 
 def decompose_and_answer(question, retriever, rerank_fn, generate_fn):
-    """
-    Full pipeline:
-    1. Decompose question
-    2. Answer each sub-question
-    3. Combine answers
-    """
-
     print(f"\nOriginal question: {question}")
 
     sub_questions = decompose_question(question)
@@ -148,7 +69,7 @@ def decompose_and_answer(question, retriever, rerank_fn, generate_fn):
     if len(sub_questions) == 1:
         final_answer = sub_answers[0]
     else:
-        print("\nSynthesising sub-answers into final response...")
+        print("\nCombining sub-answers into final response...")
         final_answer = synthesise_answers(
             question,
             sub_questions,

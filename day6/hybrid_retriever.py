@@ -1,8 +1,6 @@
 import os
 import sys
 import chromadb
-import google.generativeai as genai
-from dotenv import load_dotenv
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -11,10 +9,6 @@ from day2.ingestion import load_document
 from day2.chunking import recursive_chunking
 from day3.embeddings import embed_text, embed_query
 from day6.bm25_retriever import BM25Retriever
-
-load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-
 
 def reciprocal_rank_fusion(result_lists, k=60):
     rrf_scores = {}
@@ -58,8 +52,7 @@ class HybridRetriever:
             print(f"Indexing: {os.path.basename(path)}")
 
             text = load_document(path)
-            chunks = recursive_chunking(text, size=400, overlap=80)
-
+            chunks = recursive_chunking(text, size=300, overlap=40)
             for i, chunk in enumerate(chunks):
                 all_chunks.append(chunk)
                 all_sources.append(os.path.basename(path))
@@ -80,7 +73,7 @@ class HybridRetriever:
 
         print(f"Hybrid index complete: {len(all_chunks)} chunks in both indexes.")
 
-    def search(self, query, top_k=3, fetch_k=10):
+    def search(self, query, top_k=2, fetch_k=6):    
         bm25_results = self.bm25_retriever.search(query, top_k=fetch_k)
 
         query_vec = embed_query(query)
