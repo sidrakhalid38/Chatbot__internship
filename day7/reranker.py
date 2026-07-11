@@ -1,4 +1,24 @@
+import os
+
+import certifi
 from sentence_transformers import CrossEncoder
+
+
+# Python, httpx aur Hugging Face ko valid CA certificate bundle use karwata hai.
+os.environ.setdefault(
+    "SSL_CERT_FILE",
+    certifi.where(),
+)
+
+os.environ.setdefault(
+    "REQUESTS_CA_BUNDLE",
+    certifi.where(),
+)
+
+os.environ.setdefault(
+    "CURL_CA_BUNDLE",
+    certifi.where(),
+)
 
 
 CROSS_ENCODER_MODEL = (
@@ -6,17 +26,65 @@ CROSS_ENCODER_MODEL = (
 )
 
 
-print("Loading cross-encoder reranker...")
+# Model import ke waqt load nahi hoga.
+# Pehli rerank request par lazy load hoga.
+cross_encoder = None
+reranker_load_attempted = False
 
-cross_encoder = CrossEncoder(
-    CROSS_ENCODER_MODEL,
-    max_length=512,
-)
 
-print(
-    f"Cross-encoder loaded: "
-    f"{CROSS_ENCODER_MODEL}"
-)
+def get_cross_encoder():
+    """
+    Cross-encoder model ko sirf zarurat par load karta hai.
+
+    Agar model SSL, internet ya download problem ki wajah se
+    load na ho to None return karta hai. Is se API crash nahi hoti.
+    """
+
+    global cross_encoder
+    global reranker_load_attempted
+
+    if cross_encoder is not None:
+        return cross_encoder
+
+    # Har request par repeated download attempt se bachata hai.
+    if reranker_load_attempted:
+        return None
+
+    reranker_load_attempted = True
+
+    print("Loading cross-encoder reranker...")
+
+    try:
+        cross_encoder = CrossEncoder(
+            CROSS_ENCODER_MODEL,
+            max_length=512,
+        )
+
+        print(
+            "Cross-encoder loaded: "
+            f"{CROSS_ENCODER_MODEL}"
+        )
+
+        return cross_encoder
+
+    except Exception as error:
+        print(
+            "Cross-encoder could not be loaded."
+        )
+
+        print(
+            f"Error type: {type(error).__name__}"
+        )
+
+        print(f"Error: {error}")
+
+        print(
+            "Reranker fallback enabled. "
+            "Original hybrid retrieval order will be used."
+        )
+
+        cross_encoder = None
+        return None
 
 
 def rerank(
@@ -25,24 +93,11 @@ def rerank(
     top_k=3,
 ):
     """
-    Hybrid retriever ke candidate chunks ko
-    CrossEncoder relevance score ke mutabiq
-    dobara rank karta hai.
+    Hybrid retriever ke candidate chunks ko CrossEncoder
+    relevance score ke mutabiq dobara rank karta hai.
 
-    Parameters:
-        question:
-            User ka query/question.
-
-        chunks:
-            Retrieved chunk dictionaries ki list.
-            Har chunk mein kam az kam "text"
-            aur "source" keys honi chahiye.
-
-        top_k:
-            Final kitne best chunks return karne hain.
-
-    Returns:
-        Re-ranked chunks ki list.
+    Agar CrossEncoder load ya predict na kar sake to original
+    hybrid retrieval order preserve hota hai.
     """
 
     if not chunks:
@@ -64,6 +119,12 @@ def rerank(
     if not valid_chunks:
         return []
 
+    model = get_cross_encoder()
+
+    # Model available na ho to safe fallback.
+    if model is None:
+        return valid_chunks[:top_k]
+
     pairs = [
         [
             question,
@@ -73,7 +134,7 @@ def rerank(
     ]
 
     try:
-        scores = cross_encoder.predict(
+        scores = model.predict(
             pairs,
             show_progress_bar=False,
         )
@@ -82,15 +143,13 @@ def rerank(
         print(
             "Cross-encoder reranking failed."
         )
+
         print(
-            f"Error type: "
-            f"{type(error).__name__}"
+            f"Error type: {type(error).__name__}"
         )
+
         print(f"Error: {error}")
 
-        # Fallback:
-        # Agar reranker fail ho jaye to original
-        # retrieval order preserve kar do.
         return valid_chunks[:top_k]
 
     scored_chunks = []
@@ -101,8 +160,8 @@ def rerank(
     ):
         updated_chunk = dict(chunk)
 
-        updated_chunk["rerank_score"] = (
-            float(score)
+        updated_chunk["rerank_score"] = float(
+            score
         )
 
         scored_chunks.append(
@@ -126,15 +185,13 @@ def show_reranking(
     after_chunks,
 ):
     """
-    Debugging ke liye retrieval order aur
-    reranked order display karta hai.
+    Debugging ke liye retrieval aur reranked order show karta hai.
     """
 
     print(f"\nQuestion: {question}")
 
     print(
-        "\n[BEFORE re-ranking — "
-        "retrieval order]"
+        "\n[BEFORE re-ranking - retrieval order]"
     )
 
     for index, chunk in enumerate(
@@ -159,8 +216,7 @@ def show_reranking(
 
         print(
             f"{index}. [{source}] "
-            f"retrieval_score="
-            f"{retrieval_score}"
+            f"retrieval_score={retrieval_score}"
         )
 
         if len(text) > 100:
@@ -169,8 +225,7 @@ def show_reranking(
             print(preview)
 
     print(
-        "\n[AFTER re-ranking — "
-        "cross-encoder order]"
+        "\n[AFTER re-ranking - final order]"
     )
 
     for index, chunk in enumerate(
@@ -183,17 +238,22 @@ def show_reranking(
         )
 
         rerank_score = chunk.get(
-            "rerank_score",
-            0.0,
+            "rerank_score"
         )
 
         text = chunk.get("text", "")
         preview = text[:100]
 
+        if rerank_score is None:
+            score_text = "fallback-order"
+        else:
+            score_text = (
+                f"{rerank_score:.4f}"
+            )
+
         print(
             f"{index}. [{source}] "
-            f"rerank_score="
-            f"{rerank_score:.4f}"
+            f"rerank_score={score_text}"
         )
 
         if len(text) > 100:
@@ -206,53 +266,33 @@ if __name__ == "__main__":
     fake_chunks = [
         {
             "text": (
-                "The weather in London is "
-                "often rainy and overcast."
+                "The weather in London is often "
+                "rainy and overcast."
             ),
             "source": "unrelated.txt",
             "rrf_score": 0.031,
         },
         {
             "text": (
-                "NexusChat supports PDF, "
-                "DOCX, and TXT document "
-                "formats for ingestion."
+                "NexusChat supports PDF, DOCX, "
+                "and TXT document formats."
             ),
             "source": "sample.pdf",
             "rrf_score": 0.028,
         },
         {
             "text": (
-                "Machine learning models "
-                "learn patterns from large "
-                "datasets."
-            ),
-            "source": "sample.txt",
-            "rrf_score": 0.025,
-        },
-        {
-            "text": (
-                "NexusChat is an enterprise "
-                "RAG chatbot that answers "
-                "questions from documents."
+                "NexusChat is an enterprise RAG "
+                "chatbot that answers questions "
+                "from documents."
             ),
             "source": "sample.pdf",
             "rrf_score": 0.022,
         },
-        {
-            "text": (
-                "Users can upload documents "
-                "and query them using natural "
-                "language."
-            ),
-            "source": "sample.pdf",
-            "rrf_score": 0.019,
-        },
     ]
 
     test_question = (
-        "What is NexusChat and "
-        "what can it do?"
+        "What is NexusChat and what can it do?"
     )
 
     reranked_chunks = rerank(
@@ -266,24 +306,3 @@ if __name__ == "__main__":
         before_chunks=fake_chunks,
         after_chunks=reranked_chunks,
     )
-
-    print("\n--- Key observation ---")
-
-    if reranked_chunks:
-        top_chunk = reranked_chunks[0]
-
-        print(
-            "Top chunk after re-ranking:"
-        )
-
-        print(
-            f'[{top_chunk.get("source", "Unknown")}] '
-            f'score='
-            f'{top_chunk.get("rerank_score", 0.0):.4f}'
-        )
-
-    else:
-        print(
-            "No chunks were returned "
-            "after reranking."
-        )
