@@ -22,7 +22,7 @@ It avoids extra API calls, reduces cost, improves privacy, and can re-rank retri
 | Mentions file formats? | Yes | Yes | Yes |
 | Mentions pricing? | Partial | Yes | Yes |
 | Gives recommendation? | No | Partial | Yes |
-| Answer completeness (1–5) | 3 | 4 | 5 |
+| Answer completeness (1–5) \ 3 | 4 | 5 |
 
 ## Most complete version
 Week 2 Advanced gave the most complete answer because it covered file formats, pricing plans, and recommendation for a 50-person team.

@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>NexusChat</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #f0f4f8;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: #0d2b55;
+            color: white;
+            padding: 14px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        header h1 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        #status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ff9800;
+            display: inline-block;
+            margin-right: 6px;
+        }
+
+        #status-text {
+            font-size: 0.8rem;
+            color: #90caf9;
+        }
+
+        .main {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: #1a3a6b;
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            gap: 12px;
+            overflow-y: auto;
+        }
+
+        .sidebar h2 {
+            color: #90caf9;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #new-chat-btn {
+            background: #1565c0;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        #new-chat-btn:hover {
+            background: #1976d2;
+        }
+
+        #session-info {
+            background: rgba(255, 255, 255, 0.07);
+            border-radius: 6px;
+            padding: 10px;
+            color: #cfd8dc;
+            font-size: 0.78rem;
+            word-break: break-all;
+        }
+
+        #chunks-badge {
+            background: rgba(255, 255, 255, 0.1);
+            color: #b3e5fc;
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 0.8rem;
+        }
+
+        .upload-input {
+            width: 100%;
+            padding: 8px 10px;
+            border-radius: 6px;
+            border: none;
+            font-size: 0.85rem;
+            outline: none;
+        }
+
+        #doc-content {
+            resize: vertical;
+            min-height: 90px;
+        }
+
+        #ingest-btn {
+            width: 100%;
+            background: #1b5e20;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 9px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        #ingest-btn:hover:not(:disabled) {
+            background: #2e7d32;
+        }
+
+        #ingest-btn:disabled {
+            background: #78909c;
+            cursor: not-allowed;
+        }
+
+        #ingest-status {
+            font-size: 0.78rem;
+            color: #90caf9;
+            min-height: 18px;
+            line-height: 1.4;
+        }
+
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            display: flex;
+            flex-direction: column;
+            max-width: 75%;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            align-items: flex-end;
+        }
+
+        .message.bot {
+            align-self: flex-start;
+            align-items: flex-start;
+        }
+
+        .bubble {
+            padding: 12px 16px;
+            border-radius: 18px;
+            font-size: 0.95rem;
+            line-height: 1.55;
+            white-space: pre-wrap;
+        }
+
+        .message.user .bubble {
+            background: #1565c0;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.bot .bubble {
+            background: white;
+            color: #212121;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .sources {
+            margin-top: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            width: 100%;
+        }
+
+        .source-row {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 4px;
+        }
+
+        .source-tag {
+            background: #e3f0fb;
+            color: #1565c0;
+            border: 1px solid #90caf9;
+            border-radius: 12px;
+            padding: 3px 10px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .source-tag:hover {
+            background: #d6eaff;
+        }
+
+        .source-preview {
+            display: none;
+            background: #f9f9f9;
+            border: 1px solid #90caf9;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 0.8rem;
+            color: #37474f;
+            max-width: 450px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 5px;
+            padding: 14px 18px;
+        }
+
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            background: #90a4ae;
+            border-radius: 50%;
+            animation: bounce 1.2s infinite;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes bounce {
+            0%,
+            80%,
+            100% {
+                transform: translateY(0);
+            }
+
+            40% {
+                transform: translateY(-8px);
+            }
+        }
+
+        .input-bar {
+            padding: 16px 24px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        #question-input {
+            flex: 1;
+            border: 1.5px solid #cfd8dc;
+            border-radius: 12px;
+            padding: 10px 14px;
+            font-size: 0.95rem;
+            resize: none;
+            outline: none;
+            max-height: 120px;
+            overflow-y: auto;
+            transition: border-color 0.2s;
+        }
+
+        #question-input:focus {
+            border-color: #1565c0;
+        }
+
+        #send-btn {
+            background: #1565c0;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 10px 20px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+
+        #send-btn:hover:not(:disabled) {
+            background: #1976d2;
+        }
+
+        #send-btn:disabled {
+            background: #90a4ae;
+            cursor: not-allowed;
+        }
+
+
+        .input-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        #char-count {
+            font-size: 0.72rem;
+            color: #90a4ae;
+            text-align: right;
+        }
+
+        .turn-label {
+            font-size: 0.72rem;
+            color: #90a4ae;
+            margin-bottom: 3px;
+        }
+
+        .copy-btn {
+            margin-top: 6px;
+            background: none;
+            border: 1px solid #cfd8dc;
+            border-radius: 6px;
+            padding: 3px 10px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            color: #546e7a;
+            align-self: flex-start;
+        }
+
+        .copy-btn:hover {
+            background: #f5f5f5;
+        }
+
+        @media (max-width: 700px) {
+            .sidebar {
+                display: none;
+            }
+
+            .message {
+                max-width: 90%;
+            }
+
+            #messages {
+                padding: 14px;
+            }
+
+            .input-bar {
+                padding: 12px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>NexusChat</h1>
+
+        <div>
+            <span id="status-dot"></span>
+            <span id="status-text">Connecting...</span>
+        </div>
+    </header>
+
+    <div class="main">
+
+        <aside class="sidebar">
+
+            <button id="new-chat-btn">+ New Chat</button>
+
+            <h2>Session</h2>
+            <div id="session-info">No session yet</div>
+
+            <h2>Index</h2>
+            <div id="chunks-badge">Loading index info...</div>
+
+            <h2>Add Document</h2>
+
+            <input
+                id="doc-name"
+                class="upload-input"
+                type="text"
+                placeholder="filename.txt"
+            >
+
+            <textarea
+                id="doc-content"
+                class="upload-input"
+                rows="5"
+                placeholder="Paste document text here..."
+            ></textarea>
+
+            <button id="ingest-btn">
+                Upload Document
+            </button>
+
+            <div id="ingest-status"></div>
+
+        </aside>
+
+        <div class="chat-area">
+
+            <div id="messages"></div>
+
+            <div class="input-bar">
+                <div class="input-wrapper">
+                    <textarea
+                        id="question-input"
+                        rows="1"
+                        placeholder="Ask a question about your documents..."
+                    ></textarea>
+
+                    <span id="char-count">0 characters</span>
+                </div>
+
+                <button id="send-btn">Send</button>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = "";
+
+        let sessionId = null;
+
+        const messagesEl = document.getElementById("messages");
+        const inputEl = document.getElementById("question-input");
+        const sendBtn = document.getElementById("send-btn");
+        const sessionInfo = document.getElementById("session-info");
+        const chunksBadge = document.getElementById("chunks-badge");
+        const statusDot = document.getElementById("status-dot");
+        const statusText = document.getElementById("status-text");
+        const charCountEl = document.getElementById("char-count");
+
+        const docNameEl = document.getElementById("doc-name");
+        const docContentEl = document.getElementById("doc-content");
+        const ingestBtn = document.getElementById("ingest-btn");
+        const ingestStatusEl = document.getElementById("ingest-status");
+
+        function appendMessage(role, text, sources = null) {
+            const wrapper = document.createElement("div");
+            wrapper.className = `message ${role}`;
+
+            const bubble = document.createElement("div");
+            bubble.className = "bubble";
+            bubble.textContent = text;
+
+            wrapper.appendChild(bubble);
+
+            const isRegularBotAnswer =
+                role === "bot" &&
+                !text.startsWith("Hello!") &&
+                !text.startsWith("New conversation started.") &&
+                !text.startsWith("Could not reach the API.") &&
+                !text.startsWith("Error:");
+
+            if (isRegularBotAnswer) {
+                const copyBtn = document.createElement("button");
+                copyBtn.className = "copy-btn";
+                copyBtn.textContent = "Copy";
+
+                copyBtn.addEventListener("click", async () => {
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        copyBtn.textContent = "Copied!";
+                    } catch (error) {
+                        console.error("Clipboard error:", error);
+                        copyBtn.textContent = "Copy failed";
+                    }
+
+                    setTimeout(() => {
+                        copyBtn.textContent = "Copy";
+                    }, 2000);
+                });
+
+                wrapper.appendChild(copyBtn);
+            }
+
+            if (sources && sources.length > 0) {
+                const sourcesEl = document.createElement("div");
+                sourcesEl.className = "sources";
+
+                const uniqueSourceNames = [
+                    ...new Set(
+                        sources
+                            .map(source => source.source)
+                            .filter(Boolean)
+                    )
+                ];
+
+                uniqueSourceNames.forEach(sourceName => {
+                    const sourceChunks = sources.filter(
+                        source => source.source === sourceName
+                    );
+
+                    const sourceRow = document.createElement("div");
+                    sourceRow.className = "source-row";
+
+                    const tag = document.createElement("span");
+                    tag.className = "source-tag";
+                    tag.textContent = sourceName;
+                    tag.title = "Click to see retrieved excerpt";
+
+                    const preview = document.createElement("div");
+                    preview.className = "source-preview";
+
+                    const previewTexts = sourceChunks
+                        .map(source => source.preview)
+                        .filter(Boolean);
+
+                    preview.textContent =
+                        previewTexts.join("\n\n") ||
+                        "(No preview available)";
+
+                    tag.addEventListener("click", () => {
+                        preview.style.display =
+                            preview.style.display === "block"
+                                ? "none"
+                                : "block";
+                    });
+
+                    sourceRow.appendChild(tag);
+                    sourceRow.appendChild(preview);
+                    sourcesEl.appendChild(sourceRow);
+                });
+
+                wrapper.appendChild(sourcesEl);
+            }
+
+            messagesEl.appendChild(wrapper);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+
+            return wrapper;
+        }
+
+        function showTyping() {
+            hideTyping();
+
+            const wrapper = document.createElement("div");
+            wrapper.className = "message bot";
+            wrapper.id = "typing-indicator";
+
+            const bubble = document.createElement("div");
+            bubble.className = "bubble typing-indicator";
+            bubble.innerHTML =
+                "<span></span><span></span><span></span>";
+
+            wrapper.appendChild(bubble);
+            messagesEl.appendChild(wrapper);
+
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        function hideTyping() {
+            const indicator =
+                document.getElementById("typing-indicator");
+
+            if (indicator) {
+                indicator.remove();
+            }
+        }
+
+        async function checkHealth() {
+            try {
+                const response = await fetch(
+                    `${API_BASE}/health`
+                );
+
+                if (!response.ok) {
+                    throw new Error(
+                        `Health check failed: ${response.status}`
+                    );
+                }
+
+                const data = await response.json();
+
+                statusDot.style.background = "#4caf50";
+                statusText.textContent = "Connected";
+
+                chunksBadge.textContent =
+                    `${data.chunks_indexed ?? 0} chunks indexed`;
+
+            } catch (error) {
+                console.error(
+                    "Health check error:",
+                    error
+                );
+
+                statusDot.style.background = "#f44336";
+                statusText.textContent = "API offline";
+                chunksBadge.textContent = "Cannot reach API";
+            }
+        }
+
+        async function sendQuestion() {
+            const question = inputEl.value.trim();
+
+            if (!question || sendBtn.disabled) {
+                return;
+            }
+
+            inputEl.value = "";
+            inputEl.style.height = "auto";
+            charCountEl.textContent = "0 characters";
+            sendBtn.disabled = true;
+
+            appendMessage("user", question);
+            showTyping();
+
+            try {
+                const requestBody = {
+                    question: question
+                };
+
+                if (sessionId) {
+                    requestBody.session_id = sessionId;
+                }
+
+                const response = await fetch(
+                    `${API_BASE}/chat`,
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(requestBody)
+                    }
+                );
+
+                let data;
+
+                try {
+                    data = await response.json();
+                } catch {
+                    data = {};
+                }
+
+                hideTyping();
+
+                if (!response.ok) {
+                    appendMessage(
+                        "bot",
+                        `Error: ${
+                            data.detail ||
+                            `Request failed with status ${response.status}`
+                        }`
+                    );
+
+                    return;
+                }
+
+                const botMessage = appendMessage(
+                    "bot",
+                    data.answer ||
+                    "The API returned an empty answer.",
+                    data.sources || []
+                );
+
+                if (data.turn_number !== undefined) {
+                    const turnLabel = document.createElement("div");
+                    turnLabel.className = "turn-label";
+                    turnLabel.textContent = `Turn ${data.turn_number}`;
+
+                    botMessage.insertBefore(
+                        turnLabel,
+                        botMessage.firstChild
+                    );
+                }
+
+                if (data.session_id) {
+                    sessionId = data.session_id;
+                    sessionInfo.textContent = sessionId;
+                }
+
+            } catch (error) {
+                console.error(
+                    "Chat request error:",
+                    error
+                );
+
+                hideTyping();
+
+                appendMessage(
+                    "bot",
+                    "Could not reach the API. Make sure the FastAPI server is running."
+                );
+
+            } finally {
+                sendBtn.disabled = false;
+                inputEl.focus();
+            }
+        }
+
+        async function uploadDocument() {
+            const filename = docNameEl.value.trim();
+            const content = docContentEl.value.trim();
+
+            if (!filename || !content) {
+                ingestStatusEl.textContent =
+                    "Please provide both a filename and content.";
+
+                ingestStatusEl.style.color = "#ef9a9a";
+                return;
+            }
+
+            ingestBtn.disabled = true;
+            ingestStatusEl.textContent = "Uploading...";
+            ingestStatusEl.style.color = "#90caf9";
+
+            try {
+                const response = await fetch(
+                    `${API_BASE}/ingest`,
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            filename: filename,
+                            content: content
+                        })
+                    }
+                );
+
+                let data;
+
+                try {
+                    data = await response.json();
+                } catch {
+                    data = {};
+                }
+
+                if (!response.ok) {
+                    ingestStatusEl.textContent =
+                        `Error: ${
+                            data.detail ||
+                            `Request failed with status ${response.status}`
+                        }`;
+
+                    ingestStatusEl.style.color = "#ef9a9a";
+                    return;
+                }
+
+                ingestStatusEl.textContent =
+                    `Added ${data.chunks_added} chunks. ` +
+                    `Total: ${data.total_chunks}.`;
+
+                ingestStatusEl.style.color = "#a5d6a7";
+
+                chunksBadge.textContent =
+                    `${data.total_chunks} chunks indexed`;
+
+                docNameEl.value = "";
+                docContentEl.value = "";
+
+            } catch (error) {
+                console.error(
+                    "Upload error:",
+                    error
+                );
+
+                ingestStatusEl.textContent =
+                    "Upload failed — is the server running?";
+
+                ingestStatusEl.style.color = "#ef9a9a";
+
+            } finally {
+                ingestBtn.disabled = false;
+            }
+        }
+
+        document
+            .getElementById("new-chat-btn")
+            .addEventListener("click", () => {
+                sessionId = null;
+                messagesEl.innerHTML = "";
+                sessionInfo.textContent = "No session yet";
+
+                appendMessage(
+                    "bot",
+                    "New conversation started. What would you like to know about your documents?"
+                );
+
+                inputEl.focus();
+            });
+
+        sendBtn.addEventListener(
+            "click",
+            sendQuestion
+        );
+
+        ingestBtn.addEventListener(
+            "click",
+            uploadDocument
+        );
+
+        inputEl.addEventListener(
+            "keydown",
+            event => {
+                if (
+                    event.key === "Enter" &&
+                    !event.shiftKey
+                ) {
+                    event.preventDefault();
+                    sendQuestion();
+                }
+            }
+        );
+
+        inputEl.addEventListener(
+            "input",
+            () => {
+                inputEl.style.height = "auto";
+                inputEl.style.height =
+                    `${inputEl.scrollHeight}px`;
+
+                charCountEl.textContent =
+                    `${inputEl.value.length} characters`;
+            }
+        );
+
+        checkHealth();
+
+        appendMessage(
+            "bot",
+            "Hello! I am NexusChat. Ask me anything about the documents in the index."
+        );
+
+        inputEl.focus();
+    </script>
+
+</body>
+
+</html>

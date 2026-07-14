@@ -2,11 +2,13 @@ import os
 import sys
 import uuid
 from typing import List, Optional
+import truststore
 
+truststore.inject_into_ssl()
 import uvicorn
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------
 # Project root
@@ -20,6 +22,13 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 
+CHAT_UI_PATH = os.path.join(
+    ROOT,
+    "day11",
+    "chat.html",
+)
+
+
 # ---------------------------------------------------------
 # Existing project imports
 # ---------------------------------------------------------
@@ -27,10 +36,12 @@ if ROOT not in sys.path:
 from day2.ingestion import load_document
 from day2.chunking import recursive_chunking
 from day3.embeddings import embed_text
+
 from day4.generator import (
     GENERATION_MODEL,
     generate_answer,
 )
+
 from day5.memory_chatbot import rewrite_query
 from day6.hybrid_retriever import HybridRetriever
 from day7.reranker import rerank
@@ -48,9 +59,7 @@ from day10.chat_store import (
     delete_session,
 )
 
-from day10.persistent_index import (
-    smart_startup,
-)
+from day10.persistent_index import smart_startup
 
 
 # ---------------------------------------------------------
@@ -67,6 +76,34 @@ app = FastAPI(
     ),
     version="2.0.0",
 )
+
+
+# ---------------------------------------------------------
+# Day 11 web interface
+# ---------------------------------------------------------
+
+@app.get(
+    "/",
+    include_in_schema=False,
+)
+def serve_chat_ui():
+    """
+    Day 11 chat.html browser me serve karta hai.
+    """
+
+    if not os.path.exists(CHAT_UI_PATH):
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "day11/chat.html file nahi mili. "
+                f"Expected path: {CHAT_UI_PATH}"
+            ),
+        )
+
+    return FileResponse(
+        CHAT_UI_PATH,
+        media_type="text/html",
+    )
 
 
 # ---------------------------------------------------------
@@ -219,14 +256,13 @@ async def startup_event():
     # -----------------------------------------------------
     # 4. Rebuild BM25 index
     # -----------------------------------------------------
-    # BM25 embeddings use nahi karta, is liye ye fast
-    # aur free hota hai.
+    # BM25 embeddings use nahi karta.
+    # Is liye ye local, fast aur free hota hai.
 
     all_chunks = []
     all_sources = []
 
     for path in STARTUP_DOCUMENTS:
-
         text = load_document(path)
 
         chunks = recursive_chunking(
@@ -325,25 +361,37 @@ def chat(request: ChatRequest):
     if not session_id:
         session_id = str(uuid.uuid4())
 
-    # In-memory dictionary ki jagah SQLite
+    # SQLite se session history load karo
     history = get_session_history(
         session_id
     )
 
     try:
-        # Follow-up query ko standalone query me rewrite karta hai.
-        standalone_question = rewrite_query(
-            question,
-            history,
-        )
+        # -------------------------------------------------
+        # Query rewriting optimization
+        # -------------------------------------------------
+        # First message par history empty hoti hai.
+        # Is liye unnecessary model call nahi karte.
+        # Sirf follow-up question ko rewrite karte hain.
 
-        if standalone_question != question:
-            print(
-                "Query rewritten for retrieval: "
-                f"{standalone_question}"
+        if history:
+            standalone_question = rewrite_query(
+                question,
+                history,
             )
 
+            if standalone_question != question:
+                print(
+                    "Query rewritten for retrieval: "
+                    f"{standalone_question}"
+                )
+        else:
+            standalone_question = question
+
+        # -------------------------------------------------
         # Hybrid retrieval
+        # -------------------------------------------------
+
         candidates = retriever.search(
             standalone_question,
             top_k=10,
@@ -359,7 +407,10 @@ def chat(request: ChatRequest):
                 ),
             )
 
+        # -------------------------------------------------
         # Re-ranking
+        # -------------------------------------------------
+
         chunks = rerank(
             question=standalone_question,
             chunks=candidates,
@@ -375,18 +426,28 @@ def chat(request: ChatRequest):
                 ),
             )
 
+        # -------------------------------------------------
         # Final answer generation
+        # -------------------------------------------------
+
         answer = generate_answer(
             question=question,
             retrieved_chunks=chunks,
         )
 
+        # -------------------------------------------------
         # Save persistent conversation turn
+        # -------------------------------------------------
+
         save_turn(
             session_id=session_id,
             question=question,
             answer=answer,
         )
+
+        # -------------------------------------------------
+        # Build source citation response
+        # -------------------------------------------------
 
         sources = [
             SourceInfo(
@@ -561,7 +622,6 @@ def ingest(request: IngestRequest):
         batch_id = uuid.uuid4().hex
 
         for index, chunk in enumerate(chunks):
-
             chunk_id = (
                 f"{filename}_{batch_id}_c{index}"
             )
@@ -581,7 +641,7 @@ def ingest(request: IngestRequest):
                 }
             )
 
-        # Persistent dense index
+        # Persistent dense index me add karo
         retriever.collection.add(
             ids=ids,
             embeddings=embeddings,
@@ -589,7 +649,7 @@ def ingest(request: IngestRequest):
             metadatas=metadatas,
         )
 
-        # Running BM25 index update
+        # Running BM25 index update karo
         existing_chunks = list(
             retriever.bm25_retriever.chunks
         )

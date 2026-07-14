@@ -64,7 +64,6 @@ chunks_indexed = 0
 STARTUP_DOCUMENTS = [
     os.path.join(ROOT, "day2", "sample.txt"),
     os.path.join(ROOT, "day2", "sample.pdf"),
-    os.path.join(ROOT, "day2", "sample.docx"),
     os.path.join(ROOT, "day2", "sample2.txt"),
 ]
 
