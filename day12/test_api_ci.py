@@ -21,7 +21,6 @@ def make_mock_app():
          patch("google.generativeai.GenerativeModel") as mock_model, \
          patch("chromadb.PersistentClient") as mock_chroma, \
          patch("day10.persistent_index.smart_startup") as mock_startup, \
-         patch("day10.chat_store.initialise_db"), \
          patch("day6.bm25_retriever.BM25Retriever"):
 
         mock_response = MagicMock()
@@ -58,9 +57,11 @@ def make_mock_app():
 
 app = make_mock_app()
 
-# Entering TestClient runs FastAPI startup events.
+# Entering TestClient runs FastAPI startup events,
+# including SQLite database initialisation.
 client = TestClient(app)
 client.__enter__()
+
 
 class TestHealthEndpoint:
     def test_health_returns_ok(self):
