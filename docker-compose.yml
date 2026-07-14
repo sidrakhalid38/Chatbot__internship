@@ -1,0 +1,31 @@
+services:
+  nexuschat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: nexuschat
+
+    ports:
+      - "8000:8000"
+
+    env_file:
+      - .env
+
+    volumes:
+      - ./day10:/app/day10
+      - ./day2:/app/day2
+      - ./day11:/app/day11
+
+    restart: unless-stopped
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

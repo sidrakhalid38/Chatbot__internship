@@ -1,0 +1,33 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+
+# Virtual environments
+rag-env/
+nexuschat-env/
+venv/
+.venv/
+
+# Secrets
+.env
+
+# Git files
+.git/
+.gitignore
+
+# Persistent runtime data
+day10/chroma_store/
+day10/chat_history.db
+day10/doc_hashes.json
+
+# IDE files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+day10/chroma_store/
+day10/doc_hashes.json
+day10/chat_history.db
