@@ -639,19 +639,42 @@
             sendBtn.disabled = true;
 
             appendMessage("user", question);
-            showTyping();
+
+            const botWrapper = document.createElement("div");
+            botWrapper.className = "message bot";
+
+            const botBubble = document.createElement("div");
+            botBubble.className = "bubble";
+            botBubble.textContent = "";
+
+            botWrapper.appendChild(botBubble);
+            messagesEl.appendChild(botWrapper);
+
+            const cursor = document.createElement("span");
+            cursor.textContent = "▋";
+            cursor.style.animation = "blink 1s step-end infinite";
+            cursor.style.marginLeft = "2px";
+            botBubble.appendChild(cursor);
+
+            if (!document.getElementById("cursor-style")) {
+                const style = document.createElement("style");
+                style.id = "cursor-style";
+                style.textContent =
+                    "@keyframes blink { 50% { opacity: 0; } }";
+                document.head.appendChild(style);
+            }
+
+            messagesEl.scrollTop = messagesEl.scrollHeight;
 
             try {
-                const requestBody = {
-                    question: question
-                };
+                const requestBody = { question };
 
                 if (sessionId) {
                     requestBody.session_id = sessionId;
                 }
 
                 const response = await fetch(
-                    `${API_BASE}/chat`,
+                    `${API_BASE}/chat/stream`,
                     {
                         method: "POST",
                         headers: {
@@ -661,63 +684,235 @@
                     }
                 );
 
-                let data;
-
-                try {
-                    data = await response.json();
-                } catch {
-                    data = {};
-                }
-
-                hideTyping();
-
                 if (!response.ok) {
-                    appendMessage(
-                        "bot",
-                        `Error: ${
-                            data.detail ||
-                            `Request failed with status ${response.status}`
-                        }`
-                    );
+                    let errorData = {};
 
+                    try {
+                        errorData = await response.json();
+                    } catch {
+                        errorData = {};
+                    }
+
+                    cursor.remove();
+                    botBubble.textContent =
+                        `Error: ${
+                            errorData.detail ||
+                            `Request failed with status ${response.status}`
+                        }`;
                     return;
                 }
 
-                const botMessage = appendMessage(
-                    "bot",
-                    data.answer ||
-                    "The API returned an empty answer.",
-                    data.sources || []
-                );
-
-                if (data.turn_number !== undefined) {
-                    const turnLabel = document.createElement("div");
-                    turnLabel.className = "turn-label";
-                    turnLabel.textContent = `Turn ${data.turn_number}`;
-
-                    botMessage.insertBefore(
-                        turnLabel,
-                        botMessage.firstChild
+                if (!response.body) {
+                    throw new Error(
+                        "Streaming response body is unavailable."
                     );
                 }
 
-                if (data.session_id) {
-                    sessionId = data.session_id;
-                    sessionInfo.textContent = sessionId;
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                let buffer = "";
+                let fullAnswer = "";
+                let sourceData = [];
+
+                while (true) {
+                    const { value, done } = await reader.read();
+
+                    if (done) {
+                        break;
+                    }
+
+                    buffer += decoder.decode(
+                        value,
+                        { stream: true }
+                    );
+
+                    buffer = buffer.replace(/\r\n/g, "\n");
+                    const events = buffer.split("\n\n");
+                    buffer = events.pop() || "";
+
+                    for (const eventBlock of events) {
+                        const lines = eventBlock
+                            .split("\n")
+                            .map(line => line.trim())
+                            .filter(Boolean);
+
+                        for (const line of lines) {
+                            if (!line.startsWith("data:")) {
+                                continue;
+                            }
+
+                            let eventData;
+
+                            try {
+                                eventData = JSON.parse(
+                                    line.slice(5).trim()
+                                );
+                            } catch {
+                                continue;
+                            }
+
+                            if (eventData.token) {
+                                fullAnswer += eventData.token;
+
+                                botBubble.insertBefore(
+                                    document.createTextNode(
+                                        eventData.token
+                                    ),
+                                    cursor
+                                );
+
+                                messagesEl.scrollTop =
+                                    messagesEl.scrollHeight;
+                            }
+
+                            if (eventData.sources) {
+                                sourceData = eventData.sources;
+                            }
+
+                            if (eventData.error) {
+                                cursor.remove();
+                                botBubble.textContent =
+                                    `Error: ${eventData.error}`;
+                            }
+
+                            if (eventData.done) {
+                                cursor.remove();
+
+                                if (
+                                    !sessionId &&
+                                    eventData.session_id
+                                ) {
+                                    sessionId =
+                                        eventData.session_id;
+                                    sessionInfo.textContent =
+                                        sessionId;
+                                }
+                            }
+                        }
+                    }
                 }
+
+                if (cursor.isConnected) {
+                    cursor.remove();
+                }
+
+                if (
+                    !fullAnswer.trim() &&
+                    !botBubble.textContent.trim()
+                ) {
+                    botBubble.textContent =
+                        "The API returned an empty answer.";
+                }
+
+                if (fullAnswer.trim()) {
+                    const copyBtn =
+                        document.createElement("button");
+
+                    copyBtn.className = "copy-btn";
+                    copyBtn.textContent = "Copy";
+
+                    copyBtn.addEventListener(
+                        "click",
+                        async () => {
+                            try {
+                                await navigator.clipboard.writeText(
+                                    fullAnswer
+                                );
+                                copyBtn.textContent = "Copied!";
+                            } catch (error) {
+                                console.error(
+                                    "Clipboard error:",
+                                    error
+                                );
+                                copyBtn.textContent =
+                                    "Copy failed";
+                            }
+
+                            setTimeout(() => {
+                                copyBtn.textContent = "Copy";
+                            }, 2000);
+                        }
+                    );
+
+                    botWrapper.appendChild(copyBtn);
+                }
+
+                if (sourceData.length > 0) {
+                    const sourcesEl =
+                        document.createElement("div");
+
+                    sourcesEl.className = "sources";
+
+                    const uniqueSourceNames = [
+                        ...new Set(
+                            sourceData
+                                .map(source => source.source)
+                                .filter(Boolean)
+                        )
+                    ];
+
+                    uniqueSourceNames.forEach(sourceName => {
+                        const sourceChunks =
+                            sourceData.filter(
+                                source =>
+                                    source.source === sourceName
+                            );
+
+                        const sourceRow =
+                            document.createElement("div");
+                        sourceRow.className = "source-row";
+
+                        const tag =
+                            document.createElement("span");
+                        tag.className = "source-tag";
+                        tag.textContent = sourceName;
+                        tag.title =
+                            "Click to see retrieved excerpt";
+
+                        const preview =
+                            document.createElement("div");
+                        preview.className = "source-preview";
+
+                        const previewTexts =
+                            sourceChunks
+                                .map(source => source.preview)
+                                .filter(Boolean);
+
+                        preview.textContent =
+                            previewTexts.join("\n\n") ||
+                            "(No preview available)";
+
+                        tag.addEventListener("click", () => {
+                            preview.style.display =
+                                preview.style.display === "block"
+                                    ? "none"
+                                    : "block";
+                        });
+
+                        sourceRow.appendChild(tag);
+                        sourceRow.appendChild(preview);
+                        sourcesEl.appendChild(sourceRow);
+                    });
+
+                    botWrapper.appendChild(sourcesEl);
+                }
+
+                messagesEl.scrollTop =
+                    messagesEl.scrollHeight;
 
             } catch (error) {
                 console.error(
-                    "Chat request error:",
+                    "Streaming chat request error:",
                     error
                 );
 
-                hideTyping();
+                if (cursor.isConnected) {
+                    cursor.remove();
+                }
 
-                appendMessage(
-                    "bot",
-                    "Could not reach the API. Make sure the FastAPI server is running."
-                );
+                botBubble.textContent =
+                    "Stream failed — make sure the FastAPI server is running.";
 
             } finally {
                 sendBtn.disabled = false;

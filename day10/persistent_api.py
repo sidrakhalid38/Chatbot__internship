@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import uuid
@@ -7,7 +8,7 @@ import truststore
 truststore.inject_into_ssl()
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------
@@ -45,6 +46,7 @@ from day4.generator import (
 from day5.memory_chatbot import rewrite_query
 from day6.hybrid_retriever import HybridRetriever
 from day7.reranker import rerank
+from day13.streaming import stream_answer
 
 
 # ---------------------------------------------------------
@@ -485,6 +487,239 @@ def chat(request: ChatRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Internal chat error: {error}",
+        ) from error
+
+
+
+# ---------------------------------------------------------
+# POST /chat/stream
+# ---------------------------------------------------------
+
+@app.post("/chat/stream")
+def chat_stream(request: ChatRequest):
+    """
+    Streaming version of /chat.
+
+    Retrieval and reranking complete first. Then the answer is
+    streamed token by token through Server-Sent Events (SSE).
+    The completed answer is saved in SQLite after streaming ends.
+    """
+
+    question = request.question.strip()
+
+    if not question:
+        raise HTTPException(
+            status_code=400,
+            detail="Question cannot be empty.",
+        )
+
+    session_id = (
+        request.session_id.strip()
+        if request.session_id
+        else str(uuid.uuid4())
+    )
+
+    if not session_id:
+        session_id = str(uuid.uuid4())
+
+    history = get_session_history(session_id)
+
+    try:
+        # First question does not need an extra rewrite API call.
+        if history:
+            standalone_question = rewrite_query(
+                question,
+                history,
+            )
+
+            if standalone_question != question:
+                print(
+                    "Streaming query rewritten for retrieval: "
+                    f"{standalone_question}"
+                )
+        else:
+            standalone_question = question
+
+        # Hybrid retrieval
+        candidates = retriever.search(
+            standalone_question,
+            top_k=10,
+            fetch_k=15,
+        )
+
+        if not candidates:
+            def no_documents_stream():
+                yield (
+                    "data: "
+                    + json.dumps(
+                        {
+                            "error": (
+                                "No documents were retrieved "
+                                "for this question."
+                            )
+                        }
+                    )
+                    + "\n\n"
+                )
+
+                yield (
+                    "data: "
+                    + json.dumps(
+                        {
+                            "done": True,
+                            "session_id": session_id,
+                        }
+                    )
+                    + "\n\n"
+                )
+
+            return StreamingResponse(
+                no_documents_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "X-Accel-Buffering": "no",
+                    "Connection": "keep-alive",
+                },
+            )
+
+        # Re-ranking
+        chunks = rerank(
+            question=standalone_question,
+            chunks=candidates,
+            top_k=3,
+        )
+
+        if not chunks:
+            def no_relevant_chunks_stream():
+                yield (
+                    "data: "
+                    + json.dumps(
+                        {
+                            "error": (
+                                "No relevant documents were found "
+                                "for this question."
+                            )
+                        }
+                    )
+                    + "\n\n"
+                )
+
+                yield (
+                    "data: "
+                    + json.dumps(
+                        {
+                            "done": True,
+                            "session_id": session_id,
+                        }
+                    )
+                    + "\n\n"
+                )
+
+            return StreamingResponse(
+                no_relevant_chunks_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "X-Accel-Buffering": "no",
+                    "Connection": "keep-alive",
+                },
+            )
+
+        captured_question = question
+        captured_session_id = session_id
+        captured_chunks = chunks
+
+        def generate_and_save():
+            full_answer_parts = []
+            stream_had_error = False
+
+            for event_string in stream_answer(
+                question=captured_question,
+                retrieved_chunks=captured_chunks,
+            ):
+                event_text = (
+                    event_string
+                    .replace("data:", "", 1)
+                    .strip()
+                )
+
+                try:
+                    event_data = json.loads(event_text)
+                except json.JSONDecodeError:
+                    yield event_string
+                    continue
+
+                if "token" in event_data:
+                    token = event_data.get("token", "")
+
+                    if token:
+                        full_answer_parts.append(token)
+
+                    yield event_string
+                    continue
+
+                if "sources" in event_data:
+                    yield event_string
+                    continue
+
+                if "error" in event_data:
+                    stream_had_error = True
+                    yield event_string
+                    continue
+
+                if event_data.get("done"):
+                    full_answer = "".join(
+                        full_answer_parts
+                    ).strip()
+
+                    if full_answer and not stream_had_error:
+                        save_turn(
+                            session_id=captured_session_id,
+                            question=captured_question,
+                            answer=full_answer,
+                        )
+
+                    yield (
+                        "data: "
+                        + json.dumps(
+                            {
+                                "done": True,
+                                "session_id": captured_session_id,
+                            }
+                        )
+                        + "\n\n"
+                    )
+
+                    return
+
+                yield event_string
+
+        return StreamingResponse(
+            generate_and_save(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "Unexpected /chat/stream error: "
+            f"{type(error).__name__}: {error}"
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Internal streaming chat error: "
+                f"{error}"
+            ),
         ) from error
 
 
