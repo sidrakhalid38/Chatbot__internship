@@ -47,6 +47,12 @@ from day5.memory_chatbot import rewrite_query
 from day6.hybrid_retriever import HybridRetriever
 from day7.reranker import rerank
 from day13.streaming import stream_answer
+from day14.rate_limiter import RateLimitMiddleware
+from day14.auth import (
+    APIKeyMiddleware,
+    generate_api_key,
+    load_keys,
+)
 
 
 # ---------------------------------------------------------
@@ -78,6 +84,63 @@ app = FastAPI(
     ),
     version="2.0.0",
 )
+
+# Day 14 API key authentication middleware
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(APIKeyMiddleware)
+
+
+# ---------------------------------------------------------
+# Day 14 API key management
+# ---------------------------------------------------------
+
+@app.post("/admin/keys")
+def create_api_key(label: str, admin_secret: str):
+    """
+    Generate and return a new API key.
+
+    The plain-text key is shown only once, so save it immediately.
+    """
+    expected = os.getenv(
+        "ADMIN_SECRET",
+        "change-me-in-production",
+    )
+
+    if admin_secret != expected:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid admin secret.",
+        )
+
+    new_key = generate_api_key(label)
+
+    return {
+        "key": new_key,
+        "label": label,
+        "warning": "Save this key now — it will not be shown again.",
+    }
+
+
+@app.get("/admin/keys")
+def list_api_keys(admin_secret: str):
+    """
+    List stored API key metadata.
+
+    Raw keys are never returned. Only hashes, labels,
+    creation times, and request counts are shown.
+    """
+    expected = os.getenv(
+        "ADMIN_SECRET",
+        "change-me-in-production",
+    )
+
+    if admin_secret != expected:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid admin secret.",
+        )
+
+    return load_keys()
 
 
 # ---------------------------------------------------------
